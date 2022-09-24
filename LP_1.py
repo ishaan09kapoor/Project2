@@ -6,49 +6,52 @@ import numpy as np
 
 
 #Read Data
-price=pd.read_excel('C:\\Users\\ishaa\\Downloads\\Stocks.xlsx', usecols='C:I').values
-print(price)
-numDays=255
-numStocks=7
+price=pd.read_excel('./Stocks.xlsx', usecols='C:I').values
+#print(price
+numDays=len(price)
+numStocks=len(price[0])
+
 
 #Define LP Problem
 my_lp_problem = pulp.LpProblem("My LP Problem", pulp.LpMaximize)
 
 #LP Variable sets
-lpVarStocksOwned= pulp.LpVariable.dicts("stocksOwned", ((i, j) for i in range(numStocks) for j in range(numDays)), lowBound=0, cat = 'Integer')
-lpVarStocksSold= pulp.LpVariable.dicts("stocksSold", ((i, j) for i in range(numStocks) for j in range(numDays)), cat = 'Integer')
-lpVarMoneyEOD=pulp.LpVariable.dicts("moneyEOD", (j for j in range(numDays)), lowBound=0, cat = 'Continuous')
-lpVarValuationEOD=pulp.LpVariable.dicts("valuationEOD", (j for j in range(numDays)), lowBound=0, cat = 'Continuous')
-
+lpVarStocksOwned= pulp.LpVariable.dicts("stocksOwnedEOD", ((i, j) for i in range(numDays) for j in range(numStocks)), lowBound=0, cat = 'Continuous')
+lpVarStocksBought= pulp.LpVariable.dicts("stockBought", ((i, j) for i in range(numDays) for j in range(numStocks)), cat = 'Integer')
+lpVarMoneySOD=pulp.LpVariable.dicts("moneySOD", ((i) for i in range(numDays)), lowBound=0, cat = 'Continuous')
+lpVarMoneyEOD=pulp.LpVariable.dicts("moneyEOD", ((i) for i in range(numDays)), lowBound=0, cat = 'Continuous')
+lpVarValuationEOD=pulp.LpVariable.dicts("valuationEOD", ((i) for i in range(numDays)), lowBound=0, cat = 'Continuous')
 #Objective Function that needs to be maximized
-my_lp_problem += lpVarMoneyEOD[numDays]+lpVarValuationEOD[numDays]
+my_lp_problem += lpVarValuationEOD[numDays-1]
 
 #Starting Capital Constraint
-my_lp_problem += lpVarMoneyEOD[0]==10000000
-
-#Valuation Constraint
-for j in range(numDays):
-    my_lp_problem+=pulp.lpSum([lpVarStocksOwned[i,j]*price[i][j] for i in range(numStocks)])==lpVarValuationEOD[j]
-
-#Stock Owwned Constraint
-for i in range(numStocks):
-    for j in range(numDays):
-        try:
-            my_lp_problem+=lpVarStocksOwned[i,j] == lpVarStocksOwned[i,j-1]-lpVarStocksSold[i,j]
-        except:
-            my_lp_problem+=lpVarStocksOwned[i,j] == 0
+my_lp_problem += lpVarMoneySOD[0]==10000000
 
 #Money Constraint
-for j in range(numDays):
-    try:
-        my_lp_problem+=pulp.lpSum([1.00008*lpVarMoneyEOD[j-1]+lpVarStocksSold[i,j]*price[i][j] for i in range(numStocks)]==lpVarMoneyEOD[j])
-    except:
-        pulp.lpSum([lpVarStocksSold[i,j]*price[i][j] for i in range(numStocks)]==lpVarMoneyEOD[j])
-        
-#Stock Sold Constraint
-for i in range(numStocks):
-    for j in range(numDays):
-        my_lp_problem+=lpVarStocksSold[i,j]<=lpVarStocksOwned[i,j]
+for i in range(numDays):
+    my_lp_problem+=pulp.lpSum([lpVarStocksBought[i,j]*price[i][j] for j in range(numStocks)])==lpVarMoneySOD[i]-lpVarMoneyEOD[i]
+
+#next day money intrest constraint 
+for i in range(numDays-1):
+    my_lp_problem+=lpVarMoneyEOD[i]*1.00008==lpVarMoneySOD[i+1]
+
+#Stocks Owned Constraint
+for i in range(numDays):
+    for j in range(numStocks):
+        try:
+            my_lp_problem+=lpVarStocksOwned[i,j]==lpVarStocksBought[i,j]+lpVarStocksOwned[i-1,j]
+        except:
+            my_lp_problem+=lpVarStocksOwned[i,j]==lpVarStocksBought[i,j]
+
+#Stocks sold contraint
+for i in range(numDays-1):
+    for j in range(numStocks):
+        my_lp_problem+=lpVarStocksOwned[i,j]+lpVarStocksBought[i+1,j]>=0
+
+#EOD Valuation 
+for i in range(numDays):
+    my_lp_problem+=pulp.lpSum([lpVarStocksOwned[i,j]*price[i][j] for j in range(numStocks)])==lpVarValuationEOD[i]-lpVarMoneyEOD[i]
+
 
 #Prinitning my solution
 print (my_lp_problem)
